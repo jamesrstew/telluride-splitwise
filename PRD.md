@@ -2,7 +2,7 @@
 
 **App Name:** Splitluride *(Splitwise + Telluride)*
 **Tagline:** "Shred now. Settle later."
-**Version:** 1.0
+**Version:** 1.1
 **Author:** James Stewart
 **Date:** 2026-03-01
 **Status:** Draft — Pending Approval
@@ -11,7 +11,7 @@
 
 ## 1. Overview
 
-Splitluride is a purpose-built, mobile-first web app for splitting expenses from a guys' ski weekend in Telluride, CO. It replicates the core functionality of Splitwise — expense tracking, flexible splitting, balance calculation, and settlement optimization — without requiring user accounts, a backend, or a database. It is designed for exactly four people, deployable to GitHub Pages as a static site, and built to be used once and used well.
+Splitluride is a purpose-built, mobile-first web app for splitting expenses from a guys' ski weekend in Telluride, CO. It replicates the core functionality of Splitwise — expense tracking, flexible splitting, balance calculation, and settlement optimization — without requiring user accounts or a traditional backend. It uses Firebase Realtime Database for automatic cross-device sync so all four participants see changes within seconds. It is designed for exactly four people, deployable to GitHub Pages, and built to be used once and used well.
 
 ### 1.1 Participants
 
@@ -41,8 +41,9 @@ Splitluride is a purpose-built, mobile-first web app for splitting expenses from
 | Framework | React (via Vite) | Fast build, excellent DX, lightweight output for GitHub Pages |
 | Styling | Tailwind CSS | Utility-first, mobile-responsive, fast iteration |
 | State | React Context + useReducer | Sufficient for 4 users and ~50 expenses. No Redux overhead needed. |
-| Persistence | localStorage | Primary data store. Survives browser refresh. No backend needed. |
-| Sync | URL hash (lz-string compressed) | "Share State" button serializes all app state into a compressed, base64-encoded URL fragment for sharing via group chat. |
+| Persistence | localStorage | Offline-first local store. Survives browser refresh. App works fully without network. |
+| Sync | Firebase Realtime Database | Auto-sync across all devices within seconds. No manual sharing needed. |
+| Sync (backup) | URL hash (lz-string compressed) | "Share" button serializes state into a compressed URL for manual sharing via group chat. |
 | Hosting | GitHub Pages | Free, static, one-command deploy. |
 | Build | Vite | Fast builds, tree-shaking, optimized output. |
 
@@ -94,26 +95,41 @@ interface AppState {
 }
 ```
 
-### 2.3 Data Sync — Hybrid localStorage + Shareable URL
+### 2.3 Data Sync — Firebase Realtime Database
 
-**Primary storage:** All expense data is persisted in `localStorage` under a namespaced key (`splitluride-state`). This provides a smooth single-device experience with no data loss on refresh.
+**Offline-first architecture:** All expense data is persisted in `localStorage` under a namespaced key (`splitluride-state`). The app works fully offline. Firebase Realtime Database provides automatic cross-device sync as an additive layer — if Firebase is unavailable, the app degrades gracefully to local-only mode.
 
-**Sharing mechanism:** A "Share / Sync" action serializes the full `AppState` to JSON, compresses it with `lz-string`, and encodes it as a URL hash fragment:
+**Firebase sync flow:**
+1. User A adds/edits/deletes an expense on their phone → state saves to localStorage immediately.
+2. The `useFirebaseSync` hook detects the local state change and writes the full state to Firebase via `set()`.
+3. All other connected devices receive the update via `onValue` listeners within ~1 second.
+4. On those devices, the incoming state replaces the local state via `REPLACE_STATE` dispatch.
+5. A green/red dot in the header indicates real-time connection status.
+
+**Initial load (merge):** The first Firebase snapshot uses `MERGE_STATE` — a union merge by expense `id` where the later `createdAt` wins. This preserves any offline edits made before reconnecting.
+
+**Subsequent updates (replace):** All updates after the initial load use `REPLACE_STATE` so that deletes propagate correctly across devices.
+
+**Echo loop prevention:** A `isWritingRef` flag suppresses the synchronous `onValue` callback that Firebase RTDB fires inside `set()`, preventing write → echo → write loops.
+
+**Firebase project configuration:**
+- **Project:** `splitluride` (Firebase Realtime Database)
+- **Database path:** `/splitluride` — all state stored under this single node
+- **Security rules:** `{ "rules": { "splitluride": { ".read": true, ".write": true } } }` — public read/write scoped to the app path. No auth required (trusted friend group, temporary trip app).
+- **Data format:** Expenses and payments stored as `{ [id]: item }` maps (Firebase doesn't support arrays). Converted to/from arrays via `toFirebaseMap` / `fromFirebaseMap` helpers.
+- **Config in source:** Firebase web configs are public identifiers (not secrets), safe to commit.
+
+**Backup sync — Shareable URL:**
+
+The URL share flow remains as a fallback. A "Share" button serializes the full `AppState` to JSON, compresses it with `lz-string`, and encodes it as a URL hash fragment:
 
 ```
 https://<user>.github.io/splitluride/#s=eJzLSM3JyVEoSyzI...
 ```
 
-**Sync flow:**
-1. User A adds expenses on their phone → state auto-saves to localStorage.
-2. User A taps "Share" → compressed URL is copied to clipboard.
-3. User A pastes the URL in the group iMessage/text thread.
-4. User B opens the URL → app detects hash state → prompts: "Load shared data? This will replace your local data." or "Merge with local data?"
-5. User B's localStorage is updated.
+When a recipient opens a shared URL, a merge dialog prompts: "Replace local data?" or "Merge?" — union merge by expense `id`, latest `createdAt` wins. This is useful when Firebase is unavailable or for sharing with someone who hasn't opened the app yet.
 
-**Merge strategy:** When loading a shared URL, the app performs a union merge on expenses by `id` (UUIDs prevent collisions). If the same expense `id` exists locally and in the URL, the one with the later `createdAt` wins. A confirmation dialog shows what will change before applying.
-
-**Capacity estimate:** With lz-string compression, a typical expense serializes to ~50-80 bytes compressed. At 50 expenses + 4 participants, the total URL hash should be ~4-6KB — well within browser limits (~64KB for hash fragments in modern browsers, though practical sharing limits in iMessage/SMS are lower). A warning will display if the state approaches sharing limits.
+**Capacity estimate:** With 4 users and ~50 expenses, the Firebase payload is ~20KB — well within Realtime Database limits. The compressed URL backup is ~4-6KB.
 
 ---
 
@@ -138,7 +154,7 @@ The dashboard is the landing page after selecting a user. It provides an at-a-gl
 
 **Layout (mobile, top to bottom):**
 
-1. **Header bar** — App logo ("Splitluride"), active user chip (tappable to switch), share/sync icon.
+1. **Header bar** — App logo ("Splitluride", tappable to navigate home), active user chip (tappable to switch), share icon with green/red sync status dot.
 2. **Balance hero card** — Large, prominent display:
    - Net balance: "You owe $142.50" (red) or "You are owed $87.00" (green) or "You're all settled up" (neutral).
    - Breakdown below: individual balances with each other person (e.g., "You owe Kyle $50.00", "Dylan owes you $12.50").
@@ -299,9 +315,14 @@ A chronological feed of all actions in the app:
 - Shows who performed the action, what changed, and when.
 - Serves as an audit trail for transparency (avoids "who added that $500 expense?" disputes).
 
-### 3.8 Share / Sync
+### 3.8 Real-Time Sync
 
-**Share button (header):**
+**Automatic sync (Firebase):**
+- When any user adds, edits, or deletes an expense or payment, all connected devices receive the update automatically within ~1 second.
+- A green dot on the share button indicates an active Firebase connection. A red dot indicates the device is offline (local changes will sync when reconnected).
+- No user action required — sync is fully transparent.
+
+**Manual share button (header, backup):**
 1. Serializes current `AppState` to JSON.
 2. Compresses with lz-string.
 3. Encodes as URL hash fragment.
@@ -317,6 +338,7 @@ A chronological feed of all actions in the app:
    - "Merge" — union merge by expense ID, latest-wins on conflicts.
    - "Cancel" — ignore URL state, keep local.
 5. After merge, clears the hash from the URL (clean address bar).
+6. Merged state is automatically pushed to Firebase for other devices.
 
 ---
 
@@ -371,7 +393,10 @@ The visual identity blends 1980s ski culture with retro computing aesthetics. Th
 | Rounding errors on equal splits | Last person absorbs the penny. $100 / 3 = $33.33, $33.33, $33.34. |
 | Expense paid by someone not in the split | Allowed. E.g., James pays $100 for lift tickets for Kyle and Dylan only. |
 | All expenses deleted | Dashboard shows $0 balances. Settle Up shows "Nothing to settle!" |
-| localStorage cleared/new browser | App starts fresh. Prompt to load a shared URL if one is available in the group chat. |
+| localStorage cleared/new browser | App starts fresh. Firebase initial sync merges remote state into the empty local state, restoring all data automatically. Shared URL is a manual fallback. |
+| Firebase unavailable / offline | App works fully from localStorage. Red dot in header indicates offline status. Changes sync automatically when connectivity is restored. |
+| Two users edit simultaneously | Last write wins (full-state `set()`). With 4 users and infrequent edits, conflicts are extremely unlikely. Both edits would be <1s apart and the later one overwrites. |
+| Firebase DB empty (first load) | Initial `onValue` returns null. Local state is pushed to Firebase, seeding the database for other devices. |
 | URL state is corrupt/invalid | Show error toast: "Couldn't load shared data. Ask the person to re-share." Fall back to local state. |
 | Someone overpays via Venmo | Not tracked. The app records the intended amount. Overpayments are between friends. |
 | Editing an expense after partial settlement | Allowed, but a warning is shown: "Changing this expense will affect settled balances." Settlement records are NOT auto-adjusted — manual reconciliation is expected. |
@@ -427,7 +452,28 @@ function simplifyDebts(balances: Map<ParticipantId, number>): Transaction[] {
 }
 ```
 
-### 7.3 URL State Compression
+### 7.3 Firebase Realtime Sync
+
+```typescript
+// src/utils/firebase.ts — Core sync primitives
+writeState(expenses, payments)     // set() full state to /splitluride
+subscribeToState(callback)         // onValue listener, returns unsubscribe
+subscribeToConnection(callback)    // .info/connected listener for online indicator
+
+// src/hooks/useFirebaseSync.ts — React integration
+useFirebaseSync({ state, dispatch })  // returns { isConnected, syncDispatch }
+```
+
+**Key implementation details:**
+
+- **Full-state writes:** `writeState()` calls `set()` with the entire expenses + payments state. No granular updates needed for 4 users / ~50 expenses.
+- **Array ↔ Map conversion:** Firebase doesn't support arrays. `toFirebaseMap()` converts `items[]` to `{ [id]: item }` for storage; `fromFirebaseMap()` converts back and sorts by `createdAt` descending to preserve chronological ordering.
+- **`undefined` stripping:** Firebase `set()` throws synchronously on `undefined` values. A `stripUndefined()` helper (JSON round-trip) removes optional fields like `notes?: string` before writing.
+- **Echo suppression:** `isWritingRef` flag brackets the `set()` call. Firebase fires `onValue` synchronously inside `set()` (local optimistic update); the flag prevents this echo from dispatching a redundant `REPLACE_STATE`.
+- **Error resilience:** `writeState()` is wrapped in try/catch/finally so synchronous Firebase errors (validation, auth) don't crash the React component tree.
+- **Empty state sentinel:** When both arrays are empty, a `_empty: true` key is written to prevent Firebase from stripping the node to `null` (which would make delete-all invisible to other clients).
+
+### 7.4 URL State Compression (Backup Sync)
 
 ```typescript
 import lzString from 'lz-string';
@@ -447,7 +493,7 @@ function decodeState(hash: string): AppState | null {
 }
 ```
 
-### 7.4 GitHub Pages Deployment
+### 7.5 GitHub Pages Deployment
 
 ```bash
 # vite.config.ts — set base path for GitHub Pages
@@ -466,17 +512,16 @@ npm run build && npx gh-pages -d dist
 
 These are explicitly **not** included to keep scope tight:
 
-- User authentication / accounts
-- Server-side persistence / database
-- Real-time collaborative editing (WebSockets)
+- User authentication / accounts (Firebase rules are open for the trusted friend group)
 - Multiple trip support (this is a one-trip app)
 - Receipt photo upload / OCR
 - Currency conversion (USD only)
 - Recurring expenses
 - Group management (fixed at 4 people)
 - Push notifications
-- Offline-first / service worker (localStorage is sufficient)
+- Service worker / PWA install
 - Export to CSV/PDF (could be a fast follow if desired)
+- Conflict resolution UI (last-write-wins via full-state `set()` is sufficient for 4 users)
 
 ---
 
@@ -484,11 +529,12 @@ These are explicitly **not** included to keep scope tight:
 
 This app is successful if:
 
-1. All four participants can view accurate, up-to-date balances by the end of the trip.
+1. All four participants can view accurate, up-to-date balances on their own devices — synced automatically, no manual sharing needed.
 2. Settlement amounts are correct and traceable to individual expenses.
 3. Venmo payments can be initiated directly from the app with pre-filled amounts.
 4. The total time from "I need to log this expense" to "done" is under 15 seconds for an equal-split expense.
-5. No one says "let's just use Splitwise instead."
+5. Changes made on one phone appear on all other phones within a few seconds.
+6. No one says "let's just use Splitwise instead."
 
 ---
 
@@ -499,6 +545,8 @@ This app is successful if:
 | 1 | Custom domain or `<username>.github.io/splitluride/`? | **GitHub Pages default** — `<username>.github.io/telluride-splitwise/` (repo name). No custom domain. |
 | 2 | Any additional people who might join the trip? | **No.** Fixed at 4 participants. No need for dynamic group management. |
 | 3 | Should "Splitluride" be the final name? | **Yes.** Splitluride is confirmed. |
+| 4 | How should data sync across devices? | **Firebase Realtime Database** (v1.1). Simplest option for small data with real-time `onValue` listeners. Offline-first — localStorage remains primary, Firebase is additive. URL share retained as backup. |
+| 5 | Firebase auth required? | **No.** Public read/write rules scoped to `/splitluride`. Trusted friend group, temporary trip app. Firebase web config is a public identifier, safe to commit. |
 
 ---
 
