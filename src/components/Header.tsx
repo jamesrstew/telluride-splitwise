@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAppState } from '../hooks/useAppState';
 import { useToast } from './Toast';
 import { PARTICIPANTS, PARTICIPANT_MAP } from '../constants';
@@ -6,7 +7,8 @@ import { getShareUrl } from '../utils/urlState';
 import type { ParticipantId } from '../types';
 
 export function Header() {
-  const { state, dispatch } = useAppState();
+  const { state, dispatch, isConnected } = useAppState();
+  const navigate = useNavigate();
   const showToast = useToast();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -35,22 +37,31 @@ export function Header() {
   return (
     <header className="sticky top-0 z-40 bg-bg-primary/90 backdrop-blur-md border-b border-white/5">
       <div className="flex items-center justify-between px-4 h-14">
-        <h1 className="font-display font-black text-xl text-neon-pink neon-text-pink tracking-wide">
+        <h1
+          onClick={() => navigate('/')}
+          className="font-display font-black text-xl text-neon-pink neon-text-pink tracking-wide cursor-pointer"
+        >
           Splitluride
         </h1>
 
         <div className="flex items-center gap-3">
-          <button
-            onClick={handleShare}
-            className="p-2 rounded-lg hover:bg-white/5 transition-colors text-snow cursor-pointer"
-            aria-label="Share"
-          >
+          <div className="relative">
+            <button
+              onClick={handleShare}
+              className="p-2 rounded-lg hover:bg-white/5 transition-colors text-snow cursor-pointer"
+              aria-label="Share"
+            >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
               <polyline points="16 6 12 2 8 6" />
               <line x1="12" y1="2" x2="12" y2="15" />
             </svg>
-          </button>
+            </button>
+            <span
+              className={`absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-bg-primary ${isConnected ? 'bg-green-400' : 'bg-red-400'}`}
+              title={isConnected ? 'Synced' : 'Offline'}
+            />
+          </div>
 
           {user && (
             <div className="relative" ref={dropdownRef}>

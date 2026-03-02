@@ -1,14 +1,17 @@
 import { createContext, useReducer, useEffect, type ReactNode, type Dispatch } from 'react';
 import { appReducer, initialState, type AppAction } from './reducer';
+import { useFirebaseSync } from '../hooks/useFirebaseSync';
 import type { AppState } from '../types';
 import { STORAGE_KEY, ACTIVE_USER_KEY } from '../constants';
 
 export const AppContext = createContext<{
   state: AppState;
   dispatch: Dispatch<AppAction>;
+  isConnected: boolean;
 }>({
   state: initialState,
   dispatch: () => undefined,
+  isConnected: false,
 });
 
 function loadState(): AppState {
@@ -28,6 +31,7 @@ function loadState(): AppState {
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, null, loadState);
+  const { isConnected, syncDispatch } = useFirebaseSync({ state, dispatch });
 
   // Persist data state to localStorage
   useEffect(() => {
@@ -45,7 +49,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [state.activeUser]);
 
   return (
-    <AppContext.Provider value={{ state, dispatch }}>
+    <AppContext.Provider value={{ state, dispatch: syncDispatch, isConnected }}>
       {children}
     </AppContext.Provider>
   );
