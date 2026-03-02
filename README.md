@@ -2,18 +2,19 @@
 
 **Shred now. Settle later.**
 
-A purpose-built expense splitter for a 4-person ski trip to Telluride, CO. Think Splitwise, but with no accounts, no backend, and an 80s retro ski aesthetic.
+A purpose-built expense splitter for a 4-person ski trip to Telluride, CO. Think Splitwise, but with no accounts and an 80s retro ski aesthetic.
 
-Built as a static site deployed to GitHub Pages. All data lives in localStorage with compressed URL sharing for syncing between phones.
+Deployed to GitHub Pages with Firebase Realtime Database for automatic cross-device sync. All data is also persisted in localStorage so the app works fully offline.
 
 ## Features
 
 - **4 split types** -- Equal, exact amounts, percentage, and share-based splitting
 - **Settlement optimization** -- Greedy algorithm minimizes the number of Venmo payments needed to settle up
 - **Venmo deep links** -- One tap opens Venmo with the recipient, amount, and note pre-filled
-- **URL-based sync** -- Compress and share the full app state via a URL in the group chat. Recipients can merge or replace their local data
+- **Real-time sync** -- Firebase Realtime Database pushes changes to all connected devices within seconds. Green/red dot in the header shows connection status
+- **URL-based sync (backup)** -- Compress and share the full app state via a URL in the group chat. Recipients can merge or replace their local data
 - **Integer cent math** -- All financial calculations use integer cents with last-person-absorbs-penny rounding. 100 tests verify conservation of money across every split type and edge case
-- **No backend** -- localStorage persistence, zero auth, zero infrastructure
+- **Offline-first** -- localStorage is the primary store. Firebase is additive. App works fully if the network is down
 
 ## Tech Stack
 
@@ -24,8 +25,9 @@ Built as a static site deployed to GitHub Pages. All data lives in localStorage 
 | Styling | Tailwind CSS v4 |
 | Routing | React Router (HashRouter for GitHub Pages) |
 | State | React Context + useReducer |
-| Persistence | localStorage |
-| Sync | lz-string compressed URL fragments |
+| Persistence | localStorage (offline-first) |
+| Sync | Firebase Realtime Database |
+| Sync (backup) | lz-string compressed URL fragments |
 | Testing | Vitest (100 tests) |
 | Hosting | GitHub Pages |
 
@@ -55,10 +57,14 @@ src/
   constants.ts          # Participants, categories, storage keys
   context/
     reducer.ts          # 9 action types, pure state transitions
-    AppContext.tsx       # Provider with localStorage persistence
+    AppContext.tsx       # Provider with localStorage + Firebase sync
+  hooks/
+    useAppState.ts      # Context consumer hook
+    useFirebaseSync.ts  # Real-time sync with echo suppression
   utils/
     balances.ts         # Split calculation, net balances, pairwise debts
     settlement.ts       # Greedy debt simplification algorithm
+    firebase.ts         # Firebase init, read/write, connection listener
     formatters.ts       # Currency formatting (cents <-> display)
     venmo.ts            # Deep link + web fallback URL generation
     urlState.ts         # lz-string encode/decode for URL sharing
@@ -74,14 +80,20 @@ All money is stored and calculated as integer cents to avoid floating-point erro
 
 The settlement algorithm produces the minimum number of payment transactions by greedily matching the largest debtor to the largest creditor. Tests verify that executing the proposed transactions zeroes out all balances.
 
-## How Sharing Works
+## How Sync Works
+
+### Automatic (Firebase)
+
+When anyone adds, edits, or deletes an expense, the full state is written to Firebase Realtime Database via `set()`. All other connected devices receive the update through `onValue` listeners within ~1 second. The first load uses a union merge (preserving offline edits); all subsequent updates are full replacements so deletes propagate correctly.
+
+### Manual (URL backup)
 
 1. Tap the share icon in the header
 2. The full expense/payment state is serialized to JSON, compressed with lz-string, and encoded into a URL hash fragment
 3. The URL is copied to your clipboard -- paste it in the group chat
 4. When someone opens the link, the app extracts the shared state before React mounts (avoiding hash routing conflicts), then presents a merge dialog: **Replace**, **Merge** (union by ID, latest wins), or **Cancel**
 
-The `activeUser` field is excluded from shared URLs so each person keeps their own identity.
+The `activeUser` field is excluded from both sync methods so each person keeps their own identity.
 
 ## License
 
