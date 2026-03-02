@@ -25,9 +25,10 @@ function defaultSplits(splitType: SplitType): Split[] {
 
 interface ExpenseFormProps {
   existing?: Expense;
+  onDelete?: () => void;
 }
 
-export function ExpenseForm({ existing }: ExpenseFormProps) {
+export function ExpenseForm({ existing, onDelete }: ExpenseFormProps) {
   const { state, dispatch } = useAppState();
   const navigate = useNavigate();
   const showToast = useToast();
@@ -236,6 +237,16 @@ export function ExpenseForm({ existing }: ExpenseFormProps) {
       >
         {existing ? 'Update Expense' : 'Add Expense'}
       </button>
+
+      {/* Delete (edit mode only) */}
+      {existing && onDelete && (
+        <button
+          onClick={onDelete}
+          className="w-full py-3 rounded-xl bg-transparent border border-neon-red/30 text-neon-red/70 font-medium text-sm hover:bg-neon-red/10 hover:text-neon-red transition-colors cursor-pointer"
+        >
+          Delete Expense
+        </button>
+      )}
     </div>
   );
 }

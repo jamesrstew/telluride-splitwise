@@ -60,7 +60,7 @@ export function ExpenseCard({ expense, activeUser, onDelete }: ExpenseCardProps)
             e.stopPropagation();
             onDelete();
           }}
-          className="opacity-0 group-hover:opacity-100 ml-1 p-1.5 rounded-lg hover:bg-neon-red/20 text-neon-red transition-all cursor-pointer"
+          className="opacity-60 sm:opacity-0 sm:group-hover:opacity-100 ml-1 p-1.5 rounded-lg hover:bg-neon-red/20 text-neon-red transition-all cursor-pointer"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <polyline points="3 6 5 6 21 6" />

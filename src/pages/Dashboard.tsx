@@ -1,15 +1,27 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppState } from '../hooks/useAppState';
+import { useToast } from '../components/Toast';
 import { ExpenseCard } from '../components/ExpenseCard';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { PARTICIPANT_MAP } from '../constants';
 import { formatCents } from '../utils/formatters';
 import { getUserBalances, calculateNetBalances } from '../utils/balances';
 import type { ParticipantId } from '../types';
 
 export function Dashboard() {
-  const { state } = useAppState();
+  const { state, dispatch } = useAppState();
   const navigate = useNavigate();
+  const showToast = useToast();
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const userId = state.activeUser!;
+
+  function confirmDelete() {
+    if (!pendingDeleteId) return;
+    dispatch({ type: 'DELETE_EXPENSE', expenseId: pendingDeleteId });
+    showToast('Expense deleted', 'success');
+    setPendingDeleteId(null);
+  }
 
   const netBalances = calculateNetBalances(state.expenses, state.payments);
   const myNetBalance = netBalances.get(userId) || 0;
@@ -106,6 +118,7 @@ export function Dashboard() {
                 key={expense.id}
                 expense={expense}
                 activeUser={userId}
+                onDelete={() => setPendingDeleteId(expense.id)}
               />
             ))}
           </div>
@@ -140,6 +153,17 @@ export function Dashboard() {
           <p className="font-retro text-xs text-muted mb-2">SHRED NOW</p>
           <p className="font-retro text-xs text-neon-pink animate-neon-pulse">SETTLE LATER</p>
         </div>
+      )}
+
+      {/* Delete confirmation */}
+      {pendingDeleteId && (
+        <ConfirmDialog
+          title="Delete Expense"
+          message="This will permanently remove this expense and update all balances. This cannot be undone."
+          confirmLabel="Delete"
+          onConfirm={confirmDelete}
+          onCancel={() => setPendingDeleteId(null)}
+        />
       )}
     </div>
   );
