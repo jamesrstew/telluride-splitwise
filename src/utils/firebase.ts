@@ -3,13 +3,13 @@ import { getDatabase, ref, set, onValue, type Unsubscribe } from 'firebase/datab
 import type { Expense, Payment } from '../types';
 
 const firebaseConfig = {
-  apiKey: 'AIzaSyBfyT2pzJobuhbb-HSgUo8-CcB5bwsm2j0',
-  authDomain: 'splitluride.firebaseapp.com',
-  databaseURL: 'https://splitluride-default-rtdb.firebaseio.com',
-  projectId: 'splitluride',
-  storageBucket: 'splitluride.firebasestorage.app',
-  messagingSenderId: '945352091478',
-  appId: '1:945352091478:web:7f397f3566488a115898f7',
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
 const app = initializeApp(firebaseConfig);
